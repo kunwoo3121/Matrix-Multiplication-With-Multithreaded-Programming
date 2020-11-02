@@ -124,3 +124,148 @@ void init(int*** a, int len)
 ```
 행렬을 입력 받은 길이 만큼의 크기로 생성하고 랜덤으로 값을 부여한다.
 
+## mat_mul ( 행렬의 곱셈 / 쓰레드 미사용 )
+```c
+int mat_mul(int** src1, int** src2, int** dst, int len)
+{
+	int i, j ,k;
+	int result;
+
+	for( i = 0; i < len; i++ )
+	{
+		for( j = 0; j < len; j++)
+		{
+			result = 0;
+			for ( k = 0; k < len; k++ )
+			{
+				result += src1[i][k] * src2[k][j];
+			}
+			dst[i][j] = result;
+		}
+	}
+	
+	return 0;
+}
+```
+쓰레드를 사용하지 않고 코어 1개만 사용하여 행렬 곱셈을 하는 함수이다.
+
+## mat_mul_th ( 행렬의 곱셈 / 쓰레드 사용 )
+```c
+typedef struct
+{
+	int **src1;
+	int **src2;
+	int **dst;
+	int len;
+	int start;
+	int end;
+}matmul_arg_t;
+
+int mat_mul_th(int** src1, int** src2, int** dst, int len, int core)
+{
+	int i,res,len2,len_r,core2,s,e;
+	matmul_arg_t *arg;
+	pthread_t *a_thread;
+	void *thread_result;
+
+	a_thread = (pthread_t*)malloc(sizeof(pthread_t) * core);
+	arg = (matmul_arg_t*)malloc(sizeof(matmul_arg_t) * core);
+
+	len2 = len;
+	core2 = core;
+	s = 0;
+
+	for( i = 0; i < core; i++)
+	{
+		len_r = len2/core2;
+		e = s + len_r;
+
+		arg[i].start = s;
+		arg[i].end = e;
+		arg[i].src1 = src1;
+		arg[i].src2 = src2;
+		arg[i].dst = dst;
+		arg[i].len = len;
+		res = pthread_create(a_thread + i, NULL, mat_mul_th_kernel, (void*)(arg + i));
+		if(res != 0)
+		{
+			perror("Thread creation failed");
+			exit(EXIT_FAILURE);
+		}
+
+		s = e;
+		len2 -= len_r;
+		core2--;
+	}
+
+	for( i = 0; i < core; i++ )
+	{
+		res = pthread_join(*(a_thread + i), &thread_result);
+		if(res != 0)
+		{
+			perror("Thread join failed");
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	free(a_thread);
+	free(arg);
+
+	return 0;
+}
+```
+입력받은 만큼의 쓰레드를 생성하고 그 결과를 모아주는 함수이다.  
+  
+행렬 곱셈을 하는 핵심 함수는 mat_mul_th_kernel로 만들어준다.
+
+## mat_mul_th_kernel
+```c
+void *mat_mul_th_kernel(void *arg)
+{
+	int i, j, k;
+	matmul_arg_t *parg = (matmul_arg_t*)arg; 
+	int start = parg->start;
+	int end = parg -> end;
+	int **src1 = parg->src1;
+	int **src2 = parg->src2;
+	int **dst = parg->dst;
+	int len = parg->len;
+	int result;
+
+	for( i = start; i < end; i++)
+	{
+		for( j = 0; j < len; j++)
+		{
+			result = 0;
+			for ( k = 0; k < len; k++ )
+			{
+				result += src1[i][k] * src2[k][j];
+			}
+			dst[i][j] = result;
+		}
+	}
+	
+	return 0;
+}
+```
+mat_mul_th에서 행렬 곱셈을 시행하는 핵심 함수이다.
+
+## print_matrix
+```c
+void print_matrix(int** matrix, char* c, int len)
+{
+	int i, j;
+
+	printf("============= %s matrix =====================\n",c);
+
+	for( i = 0; i < len; i++ )
+	{
+		for( j = 0; j < len; j++)
+		{
+			printf("%d ", matrix[i][j]);
+		}
+		printf("\n");
+	}
+}
+```
+행렬을 출력해주는 함수이다.
